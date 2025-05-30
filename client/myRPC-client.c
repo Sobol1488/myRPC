@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) {
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
         log_error("Connection failed");
         close(sockfd);
         return 1;
