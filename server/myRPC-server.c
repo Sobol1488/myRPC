@@ -22,7 +22,7 @@
 #define MAX_USERS 100
 #define CONFIG_DIR "/etc/myRPC"
 #define CONFIG_FILE CONFIG_DIR "/myRPC.conf"
-#define USERS_FILE CONFIG_DIR "/users.conf"
+#define USERS_FILE CONFIG_DIR "/client.conf"
 
 /* Цвета для консоли */
 #define COLOR_RED     "\x1b[31m"
@@ -31,21 +31,27 @@
 #define COLOR_BLUE    "\x1b[34m"
 #define COLOR_RESET   "\x1b[0m"
 
-/* Макросы для логирования */
-#define LOG_INFO(fmt, ...) do { \
+/* Макросы для логирования (переименованы, чтобы избежать конфликтов) */
+#define LOG_MSG_INFO(fmt, ...) do { \
     printf(COLOR_GREEN "[INFO] " fmt COLOR_RESET "\n", ##__VA_ARGS__); \
-    log_info(fmt, ##__VA_ARGS__); \
+    char log_buf[BUFFER_SIZE]; \
+    snprintf(log_buf, sizeof(log_buf), fmt, ##__VA_ARGS__); \
+    log_info(log_buf); \
 } while(0)
 
-#define LOG_ERROR(fmt, ...) do { \
+#define LOG_MSG_ERROR(fmt, ...) do { \
     fprintf(stderr, COLOR_RED "[ERROR] %s:%d: " fmt COLOR_RESET "\n", \
             __FILE__, __LINE__, ##__VA_ARGS__); \
-    log_error(fmt, ##__VA_ARGS__); \
+    char log_buf[BUFFER_SIZE]; \
+    snprintf(log_buf, sizeof(log_buf), fmt, ##__VA_ARGS__); \
+    log_error(log_buf); \
 } while(0)
 
-#define LOG_WARNING(fmt, ...) do { \
+#define LOG_MSG_WARN(fmt, ...) do { \
     printf(COLOR_YELLOW "[WARN] " fmt COLOR_RESET "\n", ##__VA_ARGS__); \
-    log_info(fmt, ##__VA_ARGS__); \
+    char log_buf[BUFFER_SIZE]; \
+    snprintf(log_buf, sizeof(log_buf), fmt, ##__VA_ARGS__); \
+    log_info(log_buf); \
 } while(0)
 
 typedef enum {
@@ -67,7 +73,7 @@ typedef struct {
 int parse_config(server_config_t *config) {
     FILE *file = fopen(CONFIG_FILE, "r");
     if (!file) {
-        LOG_ERROR("Cannot open config file %s: %s", CONFIG_FILE, strerror(errno));
+        LOG_MSG_ERROR("Cannot open config file %s: %s", CONFIG_FILE, strerror(errno));
         return -1;
     }
 
@@ -97,13 +103,13 @@ int parse_config(server_config_t *config) {
 int load_users(users_list_t *users) {
     FILE *file = fopen(USERS_FILE, "r");
     if (!file) {
-        LOG_ERROR("Cannot open users file %s: %s", USERS_FILE, strerror(errno));
+        LOG_MSG_ERROR("Cannot open users file %s: %s", USERS_FILE, strerror(errno));
         return -1;
     }
 
     char line[BUFFER_SIZE];
     users->count = 0;
-    while (fgets(line, sizeof(line), file && users->count < MAX_USERS) {
+    while (fgets(line, sizeof(line), file) && users->count < MAX_USERS) {
         if (line[0] == '#' || line[0] == '\n') continue;
         line[strcspn(line, "\n")] = '\0';
         users->users[users->count++] = strdup(line);
@@ -127,52 +133,58 @@ int is_user_allowed(users_list_t *users, const char *username) {
 int execute_command(const char *command, char *output, size_t output_size) {
     FILE *fp = popen(command, "r");
     if (!fp) {
-        LOG_ERROR("Command execution failed: %s", strerror(errno));
+        LOG_MSG_ERROR("Command execution failed: %s", strerror(errno));
         return -1;
     }
 
-    size_t bytes_read = fread(output, 1, output_size - 1, fp);
-    output[bytes_read] = '\0';
-
-    int status = pclose(fp);
-    return WEXITSTATUS(status);
+    size_t total = 0;
+    char *ptr = output;
+    while (fgets(ptr, output_size - total, fp)) {
+        size_t len = strlen(ptr);
+        total += len;
+        ptr += len;
+        if (total >= output_size - 1) break;
+    }
+    
+    output[output_size - 1] = '\0';
+    return pclose(fp);
 }
 
 int main() {
-    LOG_INFO("=== Starting myRPC-server ===");
+    LOG_MSG_INFO("=== Starting myRPC-server ===");
 
     server_config_t config = {0};
     users_list_t users = {0};
 
     /* Загрузка конфигурации */
     if (parse_config(&config) != 0) {
-        LOG_ERROR("Failed to load configuration");
+        LOG_MSG_ERROR("Failed to load configuration");
         return 1;
     }
-    LOG_INFO("Server configuration loaded");
-    LOG_INFO("Port: %d, Socket type: %s", 
+    LOG_MSG_INFO("Server configuration loaded");
+    LOG_MSG_INFO("Port: %d, Socket type: %s", 
             config.port, 
             config.socket_type == SOCKET_STREAM ? "TCP" : "UDP");
 
     /* Загрузка пользователей */
     if (load_users(&users) != 0) {
-        LOG_ERROR("Failed to load users list");
+        LOG_MSG_ERROR("Failed to load users list");
         return 1;
     }
-    LOG_INFO("Loaded %d allowed users", users.count);
+    LOG_MSG_INFO("Loaded %d allowed users", users.count);
 
     /* Создание сокета */
     int sockfd;
     if (config.socket_type == SOCKET_STREAM) {
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        LOG_INFO("Creating TCP socket...");
+        LOG_MSG_INFO("Creating TCP socket...");
     } else {
         sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-        LOG_INFO("Creating UDP socket...");
+        LOG_MSG_INFO("Creating UDP socket...");
     }
 
     if (sockfd < 0) {
-        LOG_ERROR("Socket creation failed: %s", strerror(errno));
+        LOG_MSG_ERROR("Socket creation failed: %s", strerror(errno));
         return 1;
     }
 
@@ -185,7 +197,7 @@ int main() {
 
     /* Привязка сокета */
     if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        LOG_ERROR("Bind failed: %s", strerror(errno));
+        LOG_MSG_ERROR("Bind failed: %s", strerror(errno));
         close(sockfd);
         return 1;
     }
@@ -193,14 +205,14 @@ int main() {
     /* Для TCP: переход в режим ожидания соединений */
     if (config.socket_type == SOCKET_STREAM) {
         if (listen(sockfd, 5) < 0) {
-            LOG_ERROR("Listen failed: %s", strerror(errno));
+            LOG_MSG_ERROR("Listen failed: %s", strerror(errno));
             close(sockfd);
             return 1;
         }
     }
 
-    LOG_INFO("Server started successfully on port %d", config.port);
-    LOG_INFO("Waiting for connections...");
+    LOG_MSG_INFO("Server started successfully on port %d", config.port);
+    LOG_MSG_INFO("Waiting for connections...");
 
     /* Основной цикл обработки запросов */
     while (1) {
@@ -212,7 +224,7 @@ int main() {
         if (config.socket_type == SOCKET_STREAM) {
             newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
             if (newsockfd < 0) {
-                LOG_ERROR("Accept failed: %s", strerror(errno));
+                LOG_MSG_ERROR("Accept failed: %s", strerror(errno));
                 continue;
             }
         } else {
@@ -221,7 +233,7 @@ int main() {
 
         char client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &cli_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-        LOG_INFO("New connection from %s", client_ip);
+        LOG_MSG_INFO("New connection from %s", client_ip);
 
         /* Получение запроса */
         char request[BUFFER_SIZE];
@@ -234,19 +246,19 @@ int main() {
         }
 
         if (bytes_received < 0) {
-            LOG_ERROR("Receive failed: %s", strerror(errno));
+            LOG_MSG_ERROR("Receive failed: %s", strerror(errno));
             if (config.socket_type == SOCKET_STREAM) close(newsockfd);
             continue;
         }
         request[bytes_received] = '\0';
 
-        LOG_INFO("Received request: %s", request);
+        LOG_MSG_INFO("Received request: %s", request);
 
         /* Парсинг JSON (упрощенный) */
         char *login_start = strstr(request, "\"login\":\"");
         char *command_start = strstr(request, "\"command\":\"");
         if (!login_start || !command_start) {
-            LOG_WARNING("Invalid request format");
+            LOG_MSG_WARN("Invalid request format");
             send(newsockfd, "{\"code\":1,\"result\":\"Invalid request format\"}", 45, 0);
             if (config.socket_type == SOCKET_STREAM) close(newsockfd);
             continue;
@@ -259,7 +271,7 @@ int main() {
         char *command_end = strchr(command_start, '\"');
 
         if (!login_end || !command_end) {
-            LOG_WARNING("Invalid request format");
+            LOG_MSG_WARN("Invalid request format");
             send(newsockfd, "{\"code\":1,\"result\":\"Invalid request format\"}", 45, 0);
             if (config.socket_type == SOCKET_STREAM) close(newsockfd);
             continue;
@@ -268,11 +280,11 @@ int main() {
         *login_end = '\0';
         *command_end = '\0';
 
-        LOG_INFO("Processing command from user '%s': %s", login_start, command_start);
+        LOG_MSG_INFO("Processing command from user '%s': %s", login_start, command_start);
 
         /* Проверка пользователя */
         if (!is_user_allowed(&users, login_start)) {
-            LOG_WARNING("Unauthorized user: %s", login_start);
+            LOG_MSG_WARN("Unauthorized user: %s", login_start);
             send(newsockfd, "{\"code\":1,\"result\":\"Unauthorized user\"}", 40, 0);
             if (config.socket_type == SOCKET_STREAM) close(newsockfd);
             continue;
@@ -299,7 +311,7 @@ int main() {
                   (struct sockaddr *)&cli_addr, clilen);
         }
 
-        LOG_INFO("Command executed with status: %d", status);
+        LOG_MSG_INFO("Command executed with status: %d", status);
     }
 
     close(sockfd);
