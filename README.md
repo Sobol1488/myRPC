@@ -19,3 +19,25 @@ git clone https://github.com/ваш-репозиторий/myRPC.git
 cd myRPC
 make all           # Сборка клиента, сервера и библиотеки
 sudo make install  # Установка в /usr/local/bin/
+
+### 2. Запуск системы (сервер и клиент)
+'''bash
+# Ручной запуск
+./myRPC-server
+
+'''bash
+# Как демон (systemd)
+sudo systemctl start myRPC-server
+sudo systemctl enable myRPC-server  # Автозагрузка
+
+#Запуск клиента
+myRPC-client -h <IP> -p <PORT> -s -c "<COMMAND>"
+
+Параметры клиента
+Флаг	Описание	Пример
+-h, --host	IP сервера	-h 127.0.0.1
+-p, --port	Порт сервера	-p 1234
+-s, --stream	Использовать TCP (по умолчанию)	-s
+-d, --dgram	Использовать UDP	-d
+-c, --command	Команда для выполнения	-c "ls /"
+--help	Справка	--help
