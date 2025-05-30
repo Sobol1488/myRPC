@@ -21,11 +21,11 @@ make all           # Сборка клиента, сервера и библио
 sudo make install  # Установка в /usr/local/bin/
 
 ### 2. Запуск системы (сервер и клиент)
-'''bash
+```bash
 # Ручной запуск
 ./myRPC-server
 
-'''bash
+```bash
 # Как демон (systemd)
 sudo systemctl start myRPC-server
 sudo systemctl enable myRPC-server  # Автозагрузка
