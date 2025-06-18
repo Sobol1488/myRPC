@@ -15,7 +15,7 @@
 
 ### 1. Сборка из исходников
 ```
-git clone https://github.com/ваш-репозиторий/myRPC.git
+git clone https://github.com/Sobol1488/myRPC.git
 cd myRPC
 make all           # Сборка клиента, сервера и библиотеки
 sudo make install  # Установка в /usr/local/bin/
